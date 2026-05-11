@@ -1,19 +1,30 @@
-⚙️ Installation
-1. Clone the repository
-git clone https://github.com/akbarhrb/blind-assistance-backend.git
-cd blind-assistance-backend
+# BLIND ASSISTANCE APP BACKEND
 
-python -m venv venv
+## ⚙️ Installation
 
-venv\Scripts\activate
+#### 1. Clone the repository 
 
-pip install -r requirements.txt
+`git clone https://github.com/akbarhrb/blind-assistance-backend.git`
 
-uvicorn app:app --reload
+`cd blind-assistance-backend`
 
-📚 API Documentation
+#### 2. Create virtual environment 
+
+`python -m venv venv`
+
+`venv\Scripts\activate`
+
+#### 3. Install the requirements 
+
+`pip install -r requirements.txt`
+
+#### 4. Run the app 
+
+`uvicorn app:app --reload`
+
+## 📚 API Documentation
 
 Once running, open:
 
-Swagger UI 👉 http://127.0.0.1:8000/docs
+Swagger UI 👉 http://127.0.0.1:8000/docs 
 ReDoc 👉 http://127.0.0.1:8000/redoc
