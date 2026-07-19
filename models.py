@@ -36,6 +36,10 @@ class CustomObject(Base):
     name = Column(String(120), nullable=False)
     category = Column(String(120), nullable=True)
     image_path = Column(String(255), nullable=True)
+    # Pickled ORB keypoints/descriptors extracted from image_path, used to
+    # recognize this object in live camera frames. Null if no reference image
+    # was provided or no usable features were found in it.
+    descriptor = Column(LargeBinary, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

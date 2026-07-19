@@ -29,6 +29,7 @@ from schemas import (
     TokenResponse,
     UserOut,
 )
+from services.custom_object_service import CustomObjectService
 from services.face_service import FaceService
 from services.yolo_service import YoloService
 
@@ -66,6 +67,7 @@ app.add_middleware(
 
 face_service = FaceService()
 yolo_service = YoloService()
+custom_object_service = CustomObjectService()
 
 
 def ensure_cv2():
@@ -213,6 +215,18 @@ def detect_objects(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    known_objects = [
+        (obj.id, obj.name, custom_object_service.load_descriptor(obj.descriptor))
+        for obj in db.query(CustomObject)
+        .filter(CustomObject.user_id == current_user.id, CustomObject.descriptor.isnot(None))
+        .all()
+    ]
+    if known_objects:
+        try:
+            boxes = boxes + custom_object_service.match(frame, known_objects)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     for box in boxes:
         db.add(
             DetectionLog(
@@ -357,17 +371,23 @@ def create_object(
     current_user: User = Depends(get_current_user),
 ):
     image_path = None
+    descriptor_blob = None
     if image is not None:
         if image.content_type is None or "image" not in image.content_type:
             raise HTTPException(status_code=400, detail="Upload an image file")
         contents = read_upload(image)
         image_path = save_bytes(contents, OBJECT_STORAGE, image.filename)
 
+        frame = decode_image(contents)
+        descriptor = custom_object_service.extract_descriptor(frame)
+        descriptor_blob = custom_object_service.dump_descriptor(descriptor)
+
     obj = CustomObject(
         user_id=current_user.id,
         name=name,
         category=category,
         image_path=image_path,
+        descriptor=descriptor_blob,
     )
     db.add(obj)
     db.commit()
