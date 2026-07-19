@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import pickle
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -33,12 +32,17 @@ from schemas import (
 from services.face_service import FaceService
 from services.yolo_service import YoloService
 
-APP_STORAGE = os.path.join(os.path.dirname(__file__), "storage")
+APP_STORAGE = os.getenv("APP_STORAGE_DIR", os.path.join(os.path.dirname(__file__), "storage"))
 FACE_STORAGE = os.path.join(APP_STORAGE, "faces")
 OBJECT_STORAGE = os.path.join(APP_STORAGE, "objects")
 
 os.makedirs(FACE_STORAGE, exist_ok=True)
 os.makedirs(OBJECT_STORAGE, exist_ok=True)
+
+# Compared against FaceService.match_face()'s calibrated score (0-1 range, not
+# the raw embedding-space cosine similarity). See face_service.py for how that
+# calibration is derived.
+FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", "0.62"))
 
 SECRET_KEY = os.getenv("AUTH_SECRET", "dev-secret-change-me")
 ALGORITHM = "HS256"
@@ -222,9 +226,10 @@ def detect_objects(
     return {"boxes": boxes}
 
 
-@app.post("/detect/faces", response_model=DetectionResponse)
+@app.post("/detect/faces", response_model=DetectionResponse, response_model_exclude_none=True)
 def detect_faces(
     image: UploadFile = File(...),
+    debug: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -240,16 +245,32 @@ def detect_faces(
 
     known_faces = []
     for face in db.query(Face).filter(Face.user_id == current_user.id).all():
-        embedding = pickle.loads(face.embedding) if face.embedding else None
+        embedding = face_service.load_embedding(face.embedding)
         known_faces.append((face.id, face.name, embedding))
 
     for box in boxes:
         embedding = face_service.extract_embedding(frame, box)
         match = face_service.match_face(embedding, known_faces)
-        if match and match[2] >= 0.75:
-            box["label"] = match[1]
+
+        if match is None:
+            reason = "no_enrolled_faces" if not known_faces else "no_comparable_embedding"
+        elif match[2] >= FACE_MATCH_THRESHOLD:
+            reason = "matched"
         else:
-            box["label"] = "Unknown"
+            reason = "below_threshold"
+
+        is_unknown = reason != "matched"
+        box["label"] = match[1] if not is_unknown else "Unknown"
+
+        if debug:
+            box["matched_face_id"] = match[0] if match else None
+            box["matched_face_name"] = match[1] if match else None
+            box["match_score"] = match[2] if match else None
+            box["match_threshold"] = FACE_MATCH_THRESHOLD
+            box["is_unknown"] = is_unknown
+            box["reason"] = reason
+            box["raw_similarity"] = match[3] if match else None
+
         db.add(
             DetectionLog(
                 user_id=current_user.id,
@@ -285,7 +306,7 @@ def register_face(
     face = Face(
         user_id=current_user.id,
         name=name,
-        embedding=pickle.dumps(embedding) if embedding is not None else None,
+        embedding=face_service.dump_embedding(embedding),
         image_path=stored_image_path,
     )
     db.add(face)

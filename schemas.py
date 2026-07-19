@@ -14,6 +14,17 @@ class Box(BaseModel):
     label: str
     confidence: float
 
+    # Populated only when /detect/faces is called with ?debug=1. Omitted
+    # entirely (not just null) for regular requests via response_model_exclude_none,
+    # so existing clients that ignore unknown fields are unaffected either way.
+    matched_face_id: Optional[int] = None
+    matched_face_name: Optional[str] = None
+    match_score: Optional[float] = None
+    match_threshold: Optional[float] = None
+    is_unknown: Optional[bool] = None
+    reason: Optional[str] = None
+    raw_similarity: Optional[float] = None
+
 
 class DetectionResponse(BaseModel):
     boxes: List[Box]
